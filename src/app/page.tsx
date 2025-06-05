@@ -15,7 +15,7 @@ export default function HomePage() {
     }
     setError(null);
     setIsLoading(true);
-    setVideoDetails(null); // Clear previous details
+    setVideoDetails(null); 
 
     try {
       const response = await fetch(`/api/video-info?url=${encodeURIComponent(youtubeUrl)}`);
@@ -35,7 +35,7 @@ export default function HomePage() {
   const handleDownload = (format: "video" | "audio") => {
     if (!videoDetails || !youtubeUrl) return;
     
-    // Create a link element to trigger download
+    
     const downloadUrl = `/api/download?url=${encodeURIComponent(youtubeUrl)}&format=${format}`;
     window.open(downloadUrl, '_blank');
   };
@@ -88,7 +88,7 @@ export default function HomePage() {
                 value={youtubeUrl}
                 onChange={(e) => {
                   setYoutubeUrl(e.target.value);
-                  setError(null); // Clear error when user types
+                  setError(null); 
                 }}
                 className="block w-full rounded-xl border-0 bg-white/5 py-4 px-6 text-white placeholder-gray-400 backdrop-blur-sm ring-1 ring-inset ring-white/20 focus:ring-2 focus:ring-inset focus:ring-cyan-400 sm:text-sm sm:leading-6 transition-all duration-200"
                 placeholder="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -232,7 +232,7 @@ export default function HomePage() {
         {/* Footer */}
         <footer className="mt-16 text-center text-gray-400 text-sm">
           <p>&copy; 2025 TubeVault. All rights reserved. • For educational purposes only.</p>
-          <p className="mt-2">Please respect YouTube's Terms of Service and copyright laws.</p>
+          <p className="mt-2">Enjoy your music</p>
         </footer>
       </div>
     </main>

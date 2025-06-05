@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   title: "TubeVault - YouTube Video & Audio Downloader",
   description: "Download YouTube videos and audio files instantly with TubeVault. Fast, reliable, and beautiful interface for all your media needs.",
   keywords: ["youtube downloader", "video downloader", "audio downloader", "mp4", "mp3", "youtube to mp3", "youtube to mp4"],
-  authors: [{ name: "TubeVault Team" }],
+  authors: [{ name: "Dennis Rudiger" }],
   creator: "TubeVault",
   publisher: "TubeVault",
   formatDetection: {
