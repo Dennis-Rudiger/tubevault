@@ -1,18 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ytdl from '@distube/ytdl-core';
 
-interface VideoFormat {
-  format_id?: string;
-  ext?: string;
-  filesize?: number;
-  height?: number;
-  width?: number;
-  quality?: string;
-  container?: string;
-  hasVideo?: boolean;
-  hasAudio?: boolean;
-}
-
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const url = searchParams.get('url');
