@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import ytdl from 'ytdl-core';
+import YTDlpWrap from 'yt-dlp-wrap';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -13,30 +13,41 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Validate the URL
-    if (!ytdl.validateURL(url)) {
+    // Basic URL validation for YouTube
+    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)/;
+    if (!youtubeRegex.test(url)) {
       return NextResponse.json(
         { error: 'Invalid YouTube URL' },
         { status: 400 }
       );
     }
 
-    // Get video info
-    const info = await ytdl.getInfo(url);
-    const videoDetails = info.videoDetails;
+    // Initialize YTDlpWrap
+    const ytDlpWrap = new YTDlpWrap();
+
+    // Get video info using yt-dlp-wrap
+    const info = await ytDlpWrap.execPromise([
+      url,
+      '--dump-single-json',
+      '--no-check-certificates',
+      '--no-warnings'
+    ]);
+
+    // Parse the JSON output if info is a string
+    const videoData = typeof info === 'string' ? JSON.parse(info) : info;
 
     // Extract relevant information
     const result = {
-      title: videoDetails.title,
-      description: videoDetails.description,
-      thumbnail: videoDetails.thumbnails[videoDetails.thumbnails.length - 1]?.url,
-      duration: videoDetails.lengthSeconds,
-      author: videoDetails.author.name,
-      viewCount: videoDetails.viewCount,
-      uploadDate: videoDetails.uploadDate,
+      title: videoData.title || 'Unknown Title',
+      description: videoData.description || '',
+      thumbnail: videoData.thumbnail || '',
+      duration: videoData.duration || 0,
+      author: videoData.uploader || 'Unknown',
+      viewCount: videoData.view_count || 0,
+      uploadDate: videoData.upload_date || '',
       formats: {
-        video: info.formats.filter(format => format.hasVideo && format.hasAudio),
-        audioOnly: info.formats.filter(format => format.hasAudio && !format.hasVideo),
+        video: videoData.formats?.filter((format: any) => format.vcodec !== 'none' && format.acodec !== 'none') || [],
+        audioOnly: videoData.formats?.filter((format: any) => format.vcodec === 'none' && format.acodec !== 'none') || [],
       }
     };
 
@@ -44,7 +55,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching video info:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch video information' },
+      { error: 'Failed to fetch video information. Please check the URL and try again.' },
       { status: 500 }
     );
   }

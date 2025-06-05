@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import ytdl from 'ytdl-core';
+import YTDlpWrap from 'yt-dlp-wrap';
+import { createReadStream, unlinkSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -20,62 +23,114 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     );
   }
-
   try {
-    // Validate the URL
-    if (!ytdl.validateURL(url)) {
+    // Basic URL validation for YouTube
+    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)/;
+    if (!youtubeRegex.test(url)) {
       return NextResponse.json(
         { error: 'Invalid YouTube URL' },
         { status: 400 }
       );
     }
 
-    // Get video info to extract title for filename
-    const info = await ytdl.getInfo(url);
-    const videoTitle = info.videoDetails.title.replace(/[^\w\s]/gi, '').replace(/\s+/g, '_');
-    
-    // Set up the stream options
-    let options: ytdl.downloadOptions;
+    // Initialize YTDlpWrap
+    const ytDlpWrap = new YTDlpWrap();
+
+    // Generate a temporary filename
+    const tempDir = tmpdir();
+    const timestamp = Date.now();
+    let outputTemplate: string;
     let filename: string;
     let contentType: string;
 
     if (format === 'audio') {
-      options = { 
-        filter: 'audioonly',
-        quality: 'highestaudio'
-      };
-      filename = `${videoTitle}.mp3`;
+      outputTemplate = join(tempDir, `audio_${timestamp}.%(ext)s`);
+      filename = `audio_${timestamp}.mp3`;
       contentType = 'audio/mpeg';
     } else {
-      options = { 
-        filter: 'videoandaudio',
-        quality: 'highest'
-      };
-      filename = `${videoTitle}.mp4`;
+      outputTemplate = join(tempDir, `video_${timestamp}.%(ext)s`);
+      filename = `video_${timestamp}.mp4`;
       contentType = 'video/mp4';
     }
 
-    // Create the download stream
-    const stream = ytdl(url, options);
+    // Set up download options
+    const downloadOptions = [
+      url,
+      '--output', outputTemplate,
+      '--no-check-certificates',
+      '--no-warnings'
+    ];
+
+    if (format === 'audio') {
+      downloadOptions.push(
+        '--extract-audio',
+        '--audio-format', 'mp3',
+        '--audio-quality', '0'
+      );
+    } else {
+      downloadOptions.push(
+        '--format', 'best[ext=mp4]'
+      );
+    }
+
+    // Download the file
+    await ytDlpWrap.execPromise(downloadOptions);
+
+    // Find the downloaded file (yt-dlp might change the extension)
+    const { readdirSync } = await import('fs');
+    const files = readdirSync(tempDir);
+    const downloadedFile = files.find(file => 
+      file.startsWith(format === 'audio' ? `audio_${timestamp}` : `video_${timestamp}`)
+    );
+
+    if (!downloadedFile) {
+      throw new Error('Downloaded file not found');
+    }
+
+    const filePath = join(tempDir, downloadedFile);
+    
+    // Get the actual filename for download
+    const actualExtension = downloadedFile.split('.').pop();
+    const downloadFilename = format === 'audio' ? 
+      `audio_${timestamp}.${actualExtension}` : 
+      `video_${timestamp}.${actualExtension}`;
 
     // Set up response headers for file download
     const headers = new Headers();
-    headers.set('Content-Disposition', `attachment; filename="${filename}"`);
+    headers.set('Content-Disposition', `attachment; filename="${downloadFilename}"`);
     headers.set('Content-Type', contentType);
 
-    // Create a ReadableStream from the ytdl stream
+    // Create a ReadableStream from the file
+    const fileStream = createReadStream(filePath);
+    
     const readableStream = new ReadableStream({
       start(controller) {
-        stream.on('data', (chunk) => {
-          controller.enqueue(chunk);
+        fileStream.on('data', (chunk: string | Buffer) => {
+          if (typeof chunk === 'string') {
+            controller.enqueue(new TextEncoder().encode(chunk));
+          } else {
+            controller.enqueue(new Uint8Array(chunk));
+          }
         });
 
-        stream.on('end', () => {
+        fileStream.on('end', () => {
+          // Clean up the temporary file
+          try {
+            unlinkSync(filePath);
+          } catch (error) {
+            console.error('Error cleaning up temp file:', error);
+          }
           controller.close();
         });
 
-        stream.on('error', (error) => {
-          console.error('Stream error:', error);
+        fileStream.on('error', (error: Error) => {
+          console.error('File stream error:', error);
+          // Clean up the temporary file on error
+          try {
+            unlinkSync(filePath);
+          } catch (cleanupError) {
+            console.error('Error cleaning up temp file on error:', cleanupError);
+          }
           controller.error(error);
         });
       }
