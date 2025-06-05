@@ -1,25 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import YTDlpWrap from 'yt-dlp-wrap';
+import ytdl from '@distube/ytdl-core';
 
 interface VideoFormat {
-  vcodec?: string;
-  acodec?: string;
   format_id?: string;
   ext?: string;
   filesize?: number;
   height?: number;
   width?: number;
-}
-
-interface VideoData {
-  title?: string;
-  description?: string;
-  thumbnail?: string;
-  uploader?: string;
-  duration?: number;
-  view_count?: number;
-  upload_date?: string;
-  formats?: VideoFormat[];
+  quality?: string;
+  container?: string;
+  hasVideo?: boolean;
+  hasAudio?: boolean;
 }
 
 export async function GET(request: NextRequest) {
@@ -43,30 +34,62 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Initialize YTDlpWrap
-    const ytDlpWrap = new YTDlpWrap();
+    // Validate that it's a valid YouTube URL for ytdl-core
+    if (!ytdl.validateURL(url)) {
+      return NextResponse.json(
+        { error: 'Invalid or unsupported YouTube URL' },
+        { status: 400 }
+      );
+    }
 
-    // Get video info using yt-dlp-wrap
-    const info = await ytDlpWrap.execPromise([
-      url,
-      '--dump-single-json',
-      '--no-check-certificates',
-      '--no-warnings'
-    ]);    // Parse the JSON output if info is a string
-    const videoData: VideoData = typeof info === 'string' ? JSON.parse(info) : info;    // Extract relevant information
+    // Get video info using ytdl-core
+    console.log('Fetching video info for:', url);
+    const info = await ytdl.getInfo(url);
+    
+    const videoDetails = info.videoDetails;
+    const formats = info.formats;
+
+    // Process formats to separate video and audio-only
+    const videoFormats = formats.filter(format => 
+      format.hasVideo && format.hasAudio && format.container === 'mp4'
+    ).map(format => ({
+      format_id: format.itag?.toString(),
+      ext: format.container,
+      filesize: format.contentLength ? parseInt(format.contentLength) : undefined,
+      height: format.height,
+      width: format.width,
+      quality: format.qualityLabel,
+      hasVideo: format.hasVideo,
+      hasAudio: format.hasAudio
+    }));
+
+    const audioFormats = formats.filter(format => 
+      !format.hasVideo && format.hasAudio
+    ).map(format => ({
+      format_id: format.itag?.toString(),
+      ext: format.container,
+      filesize: format.contentLength ? parseInt(format.contentLength) : undefined,
+      quality: format.audioBitrate ? `${format.audioBitrate}kbps` : undefined,
+      hasVideo: format.hasVideo,
+      hasAudio: format.hasAudio
+    }));
+
+    // Extract relevant information
     const result = {
-      title: videoData.title || 'Unknown Title',
-      description: videoData.description || '',
-      thumbnail: videoData.thumbnail || '',
-      duration: videoData.duration || 0,
-      uploader: videoData.uploader || 'Unknown',
-      viewCount: videoData.view_count || 0,
-      uploadDate: videoData.upload_date || '',formats: {
-        video: videoData.formats?.filter((format: VideoFormat) => format.vcodec !== 'none' && format.acodec !== 'none') || [],
-        audioOnly: videoData.formats?.filter((format: VideoFormat) => format.vcodec === 'none' && format.acodec !== 'none') || [],
+      title: videoDetails.title || 'Unknown Title',
+      description: videoDetails.description || '',
+      thumbnail: videoDetails.thumbnails?.[videoDetails.thumbnails.length - 1]?.url || '',
+      uploader: videoDetails.author?.name || videoDetails.ownerChannelName || 'Unknown',
+      duration: parseInt(videoDetails.lengthSeconds || '0'),
+      viewCount: parseInt(videoDetails.viewCount || '0'),
+      uploadDate: videoDetails.uploadDate || '',
+      formats: {
+        video: videoFormats,
+        audioOnly: audioFormats,
       }
     };
 
+    console.log('Successfully fetched video info:', result.title);
     return NextResponse.json(result);
   } catch (error) {
     console.error('Error fetching video info:', error);

@@ -2,7 +2,14 @@
   "name": "tubevault",
   "version": "1.0.0",
   "description": "A beautiful and powerful YouTube video and audio downloader with modern UI",
-  "keywords": ["youtube", "downloader", "video", "audio", "nextjs", "typescript"],
+  "keywords": [
+    "youtube",
+    "downloader",
+    "video",
+    "audio",
+    "nextjs",
+    "typescript"
+  ],
   "author": "TubeVault Team",
   "homepage": "https://tubevault.vercel.app",
   "private": true,
@@ -13,10 +20,11 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@distube/ytdl-core": "^4.16.11",
     "next": "15.3.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "yt-dlp-wrap": "^2.3.12"
+    "ytdl-core": "^4.11.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

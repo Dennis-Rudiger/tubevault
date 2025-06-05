@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import YTDlpWrap from 'yt-dlp-wrap';
-import { createReadStream, unlinkSync } from 'fs';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import ytdl from '@distube/ytdl-core';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -22,6 +19,7 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     );
   }
+
   try {
     // Basic URL validation for YouTube
     const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)/;
@@ -32,104 +30,69 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Initialize YTDlpWrap
-    const ytDlpWrap = new YTDlpWrap();    // Generate a temporary filename
-    const tempDir = tmpdir();
-    const timestamp = Date.now();
-    let outputTemplate: string;
-    let contentType: string;
-
-    if (format === 'audio') {
-      outputTemplate = join(tempDir, `audio_${timestamp}.%(ext)s`);
-      contentType = 'audio/mpeg';
-    } else {
-      outputTemplate = join(tempDir, `video_${timestamp}.%(ext)s`);
-      contentType = 'video/mp4';
-    }// Set up download options
-    const downloadOptions = [
-      url,
-      '--output', outputTemplate,
-      '--no-check-certificates',
-      '--no-warnings'
-    ];    if (format === 'audio') {
-      // Download audio-only format directly (no post-processing needed)
-      downloadOptions.push(
-        '--format', 'bestaudio[ext=m4a]/bestaudio/best',
-        '--max-filesize', '50M'  // Limit file size for faster downloads
+    // Validate that it's a valid YouTube URL
+    if (!ytdl.validateURL(url)) {
+      return NextResponse.json(
+        { error: 'Invalid or unsupported YouTube URL' },
+        { status: 400 }
       );
-      contentType = 'audio/mp4';
-    } else {
-      // For video, prioritize smaller sizes to stay within time limits
-      downloadOptions.push(
-        '--format', 'best[height<=720][ext=mp4]/best[ext=mp4]/best',
-        '--max-filesize', '100M'  // Limit file size for faster downloads
-      );
-    }// Download the file
-    console.log('Starting download with options:', downloadOptions);
-    await ytDlpWrap.execPromise(downloadOptions);
-    console.log('Download completed successfully');
-
-    // Find the downloaded file (yt-dlp might change the extension)
-    const { readdirSync } = await import('fs');
-    const files = readdirSync(tempDir);
-    console.log('Files in temp directory:', files);
-    const downloadedFile = files.find(file => 
-      file.startsWith(format === 'audio' ? `audio_${timestamp}` : `video_${timestamp}`)
-    );
-
-    if (!downloadedFile) {
-      console.error('No matching file found. Available files:', files);
-      throw new Error('Downloaded file not found');
     }
 
-    console.log('Found downloaded file:', downloadedFile);
+    console.log(`Starting ${format} download for:`, url);
 
-    const filePath = join(tempDir, downloadedFile);
-    
-    // Get the actual filename for download
-    const actualExtension = downloadedFile.split('.').pop();
-    const downloadFilename = format === 'audio' ? 
-      `audio_${timestamp}.${actualExtension}` : 
-      `video_${timestamp}.${actualExtension}`;
+    // Get video info to determine the best format
+    const info = await ytdl.getInfo(url);
+    const videoDetails = info.videoDetails;
+
+    let downloadOptions: ytdl.downloadOptions;
+    let contentType: string;
+    let filename: string;
+
+    if (format === 'audio') {
+      // For audio, get the best audio-only format
+      downloadOptions = {
+        filter: 'audioonly',
+        quality: 'highestaudio',
+      };
+      contentType = 'audio/mp4';
+      filename = `${videoDetails.title?.replace(/[^a-zA-Z0-9]/g, '_') || 'audio'}.m4a`;
+    } else {
+      // For video, get the best video+audio format
+      downloadOptions = {
+        filter: format => format.hasVideo && format.hasAudio,
+        quality: 'highest',
+      };
+      contentType = 'video/mp4';
+      filename = `${videoDetails.title?.replace(/[^a-zA-Z0-9]/g, '_') || 'video'}.mp4`;
+    }
+
+    // Create the download stream
+    const stream = ytdl(url, downloadOptions);
 
     // Set up response headers for file download
     const headers = new Headers();
-    headers.set('Content-Disposition', `attachment; filename="${downloadFilename}"`);
+    headers.set('Content-Disposition', `attachment; filename="${filename}"`);
     headers.set('Content-Type', contentType);
 
-    // Create a ReadableStream from the file
-    const fileStream = createReadStream(filePath);
-    
+    // Convert Node.js stream to ReadableStream for the Response
     const readableStream = new ReadableStream({
       start(controller) {
-        fileStream.on('data', (chunk: string | Buffer) => {
-          if (typeof chunk === 'string') {
-            controller.enqueue(new TextEncoder().encode(chunk));
-          } else {
-            controller.enqueue(new Uint8Array(chunk));
-          }
+        stream.on('data', (chunk: Buffer) => {
+          controller.enqueue(new Uint8Array(chunk));
         });
 
-        fileStream.on('end', () => {
-          // Clean up the temporary file
-          try {
-            unlinkSync(filePath);
-          } catch (error) {
-            console.error('Error cleaning up temp file:', error);
-          }
+        stream.on('end', () => {
+          console.log(`${format} download completed:`, filename);
           controller.close();
         });
 
-        fileStream.on('error', (error: Error) => {
-          console.error('File stream error:', error);
-          // Clean up the temporary file on error
-          try {
-            unlinkSync(filePath);
-          } catch (cleanupError) {
-            console.error('Error cleaning up temp file on error:', cleanupError);
-          }
+        stream.on('error', (error: Error) => {
+          console.error(`${format} download error:`, error);
           controller.error(error);
         });
+      },
+      cancel() {
+        stream.destroy();
       }
     });
 
@@ -138,9 +101,9 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error downloading video:', error);
+    console.error(`Error downloading ${format}:`, error);
     return NextResponse.json(
-      { error: 'Failed to download video' },
+      { error: `Failed to download ${format}` },
       { status: 500 }
     );
   }
