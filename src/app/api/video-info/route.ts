@@ -53,17 +53,15 @@ export async function GET(request: NextRequest) {
       '--no-check-certificates',
       '--no-warnings'
     ]);    // Parse the JSON output if info is a string
-    const videoData: VideoData = typeof info === 'string' ? JSON.parse(info) : info;
-
-    // Extract relevant information
+    const videoData: VideoData = typeof info === 'string' ? JSON.parse(info) : info;    // Extract relevant information
     const result = {
       title: videoData.title || 'Unknown Title',
       description: videoData.description || '',
       thumbnail: videoData.thumbnail || '',
       duration: videoData.duration || 0,
-      author: videoData.uploader || 'Unknown',
+      uploader: videoData.uploader || 'Unknown',
       viewCount: videoData.view_count || 0,
-      uploadDate: videoData.upload_date || '',      formats: {
+      uploadDate: videoData.upload_date || '',formats: {
         video: videoData.formats?.filter((format: VideoFormat) => format.vcodec !== 'none' && format.acodec !== 'none') || [],
         audioOnly: videoData.formats?.filter((format: VideoFormat) => format.vcodec === 'none' && format.acodec !== 'none') || [],
       }
