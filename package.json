@@ -1,6 +1,10 @@
 {
-  "name": "youtube",
-  "version": "0.1.0",
+  "name": "tubevault",
+  "version": "1.0.0",
+  "description": "A beautiful and powerful YouTube video and audio downloader with modern UI",
+  "keywords": ["youtube", "downloader", "video", "audio", "nextjs", "typescript"],
+  "author": "TubeVault Team",
+  "homepage": "https://tubevault.vercel.app",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",

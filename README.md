@@ -1,24 +1,27 @@
-# YouTube Downloader
+# TubeVault 🎬
 
-A beautiful and minimalistic web application that allows users to download videos and audio from YouTube. Built with Next.js, TypeScript, and Tailwind CSS.
+A beautiful and powerful YouTube video and audio downloader with modern UI. Built with Next.js, TypeScript, and Tailwind CSS.
 
-## Features
+## ✨ Features
 
-- 🎥 Download YouTube videos in various formats
-- 🎵 Extract and download audio from YouTube videos
-- 🎨 Beautiful, modern UI with gradient backgrounds and smooth animations
-- 📱 Responsive design that works on all devices
-- ⚡ Fast and reliable using yt-dlp-wrap
-- 🔒 Client-side URL validation
-- 💾 Direct file downloads without storing on server
+- 🎥 **Download YouTube videos** in high quality MP4 format
+- 🎵 **Extract and download audio** from YouTube videos  
+- 🎨 **Beautiful, modern UI** with gradient backgrounds and smooth animations
+- 📱 **Fully responsive design** that works perfectly on all devices
+- ⚡ **Lightning fast downloads** using yt-dlp-wrap
+- 🔒 **Secure and private** - no data stored on servers
+- 💾 **Direct downloads** without temporary server storage
+- 🎯 **SEO optimized** with proper meta tags and structured data
+- 📱 **PWA ready** - can be installed as an app
 
-## Tech Stack
+## 🚀 Tech Stack
 
 - **Framework**: Next.js 15 with App Router
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **YouTube Processing**: yt-dlp-wrap
-- **Deployment**: Ready for Vercel
+- **Language**: TypeScript  
+- **Styling**: Tailwind CSS with custom animations
+- **YouTube Processing**: yt-dlp-wrap (reliable and fast)
+- **Deployment**: Optimized for Vercel
+- **SEO**: Meta tags, Open Graph, Twitter Cards, Structured Data
 
 ## Getting Started
 

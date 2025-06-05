@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "name": "tubevault",
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "functions": {
+    "src/app/api/download/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/video-info/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}
