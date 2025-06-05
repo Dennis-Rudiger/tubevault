@@ -57,20 +57,21 @@ export async function GET(request: NextRequest) {
       '--output', outputTemplate,
       '--no-check-certificates',
       '--no-warnings'
-    ];
-
-    if (format === 'audio') {
+    ];    if (format === 'audio') {
       // Download audio-only format directly (no post-processing needed)
       downloadOptions.push(
-        '--format', 'bestaudio[ext=m4a]/bestaudio/best'
+        '--format', 'bestaudio[ext=m4a]/bestaudio/best',
+        '--max-filesize', '50M'  // Limit file size for faster downloads
       );
       filename = `audio_${timestamp}.m4a`;
       contentType = 'audio/mp4';
     } else {
+      // For video, prioritize smaller sizes to stay within time limits
       downloadOptions.push(
-        '--format', 'best[ext=mp4]/best'
+        '--format', 'best[height<=720][ext=mp4]/best[ext=mp4]/best',
+        '--max-filesize', '100M'  // Limit file size for faster downloads
       );
-    }    // Download the file
+    }// Download the file
     console.log('Starting download with options:', downloadOptions);
     await ytDlpWrap.execPromise(downloadOptions);
     console.log('Download completed successfully');
