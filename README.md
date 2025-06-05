@@ -79,8 +79,18 @@ Downloads video or audio from a YouTube URL.
 - `quality`: Quality preference (optional, defaults to "highest")
 
 ## Deployment
+This project is production-ready and easily deployable on Vercel.
 
-This project is ready to be deployed on Vercel:
+**Live Demo:** [tubevault.vercel.app](https://tubevault.vercel.app)
+
+You can deploy your own instance in minutes:
+
+1. Fork or clone this repository
+2. Push your code to GitHub
+3. Connect your repository to [Vercel](https://vercel.com/)
+4. Deploy with a single click
+
+Enjoy seamless, serverless deployment with automatic HTTPS, CI/CD, and instant global availability.
 
 1. Push your code to a GitHub repository
 2. Connect your repository to Vercel
