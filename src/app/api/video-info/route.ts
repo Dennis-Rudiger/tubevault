@@ -1,6 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import YTDlpWrap from 'yt-dlp-wrap';
 
+interface VideoFormat {
+  vcodec?: string;
+  acodec?: string;
+  format_id?: string;
+  ext?: string;
+  filesize?: number;
+  height?: number;
+  width?: number;
+}
+
+interface VideoData {
+  title?: string;
+  description?: string;
+  thumbnail?: string;
+  uploader?: string;
+  duration?: number;
+  view_count?: number;
+  upload_date?: string;
+  formats?: VideoFormat[];
+}
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const url = searchParams.get('url');
@@ -31,10 +52,8 @@ export async function GET(request: NextRequest) {
       '--dump-single-json',
       '--no-check-certificates',
       '--no-warnings'
-    ]);
-
-    // Parse the JSON output if info is a string
-    const videoData = typeof info === 'string' ? JSON.parse(info) : info;
+    ]);    // Parse the JSON output if info is a string
+    const videoData: VideoData = typeof info === 'string' ? JSON.parse(info) : info;
 
     // Extract relevant information
     const result = {
@@ -44,10 +63,9 @@ export async function GET(request: NextRequest) {
       duration: videoData.duration || 0,
       author: videoData.uploader || 'Unknown',
       viewCount: videoData.view_count || 0,
-      uploadDate: videoData.upload_date || '',
-      formats: {
-        video: videoData.formats?.filter((format: any) => format.vcodec !== 'none' && format.acodec !== 'none') || [],
-        audioOnly: videoData.formats?.filter((format: any) => format.vcodec === 'none' && format.acodec !== 'none') || [],
+      uploadDate: videoData.upload_date || '',      formats: {
+        video: videoData.formats?.filter((format: VideoFormat) => format.vcodec !== 'none' && format.acodec !== 'none') || [],
+        audioOnly: videoData.formats?.filter((format: VideoFormat) => format.vcodec === 'none' && format.acodec !== 'none') || [],
       }
     };
 

@@ -8,7 +8,6 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const url = searchParams.get('url');
   const format = searchParams.get('format'); // 'video' or 'audio'
-  const quality = searchParams.get('quality') || 'highest';
 
   if (!url) {
     return NextResponse.json(
@@ -34,24 +33,19 @@ export async function GET(request: NextRequest) {
     }
 
     // Initialize YTDlpWrap
-    const ytDlpWrap = new YTDlpWrap();
-
-    // Generate a temporary filename
+    const ytDlpWrap = new YTDlpWrap();    // Generate a temporary filename
     const tempDir = tmpdir();
     const timestamp = Date.now();
     let outputTemplate: string;
-    let filename: string;
     let contentType: string;
 
     if (format === 'audio') {
       outputTemplate = join(tempDir, `audio_${timestamp}.%(ext)s`);
-      filename = `audio_${timestamp}.mp3`;
       contentType = 'audio/mpeg';
     } else {
       outputTemplate = join(tempDir, `video_${timestamp}.%(ext)s`);
-      filename = `video_${timestamp}.mp4`;
       contentType = 'video/mp4';
-    }    // Set up download options
+    }// Set up download options
     const downloadOptions = [
       url,
       '--output', outputTemplate,
@@ -63,7 +57,6 @@ export async function GET(request: NextRequest) {
         '--format', 'bestaudio[ext=m4a]/bestaudio/best',
         '--max-filesize', '50M'  // Limit file size for faster downloads
       );
-      filename = `audio_${timestamp}.m4a`;
       contentType = 'audio/mp4';
     } else {
       // For video, prioritize smaller sizes to stay within time limits

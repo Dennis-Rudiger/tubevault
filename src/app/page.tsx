@@ -1,10 +1,33 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
+
+interface VideoFormat {
+  format_id?: string;
+  ext?: string;
+  filesize?: number;
+  height?: number;
+  width?: number;
+}
+
+interface VideoDetails {
+  title: string;
+  description: string;
+  thumbnail: string;
+  uploader: string;
+  duration: number;
+  viewCount: number;
+  uploadDate: string;
+  formats: {
+    video: VideoFormat[];
+    audioOnly: VideoFormat[];
+  };
+}
 
 export default function HomePage() {
   const [youtubeUrl, setYoutubeUrl] = useState("");
-  const [videoDetails, setVideoDetails] = useState<any>(null); // We'll define a proper type later
+  const [videoDetails, setVideoDetails] = useState<VideoDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,8 +48,9 @@ export default function HomePage() {
       }
       const data = await response.json();
       setVideoDetails(data);
-    } catch (err: any) {
-      setError(err.message || "An unexpected error occurred.");
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "An unexpected error occurred.";
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -148,16 +172,18 @@ export default function HomePage() {
               <div className="rounded-2xl bg-white/5 p-6 backdrop-blur-sm border border-white/10">
                 <div className="flex flex-col lg:flex-row gap-6">
                   <div className="lg:w-80 flex-shrink-0">
-                    <img
+                    <Image
                       src={videoDetails.thumbnail}
                       alt="Video thumbnail"
+                      width={320}
+                      height={180}
                       className="w-full h-auto rounded-xl shadow-lg object-cover"
                     />
                   </div>
                   <div className="flex-1">
                     <h3 className="text-xl font-bold text-white mb-4 line-clamp-2">{videoDetails.title}</h3>
                     <div className="space-y-2 text-sm text-gray-300 mb-6">
-                      <p><span className="font-medium">Channel:</span> {videoDetails.author}</p>
+                      <p><span className="font-medium">Channel:</span> {videoDetails.uploader}</p>
                       <p><span className="font-medium">Duration:</span> {Math.floor(videoDetails.duration / 60)}:{(videoDetails.duration % 60).toString().padStart(2, '0')}</p>
                       <p><span className="font-medium">Views:</span> {videoDetails.viewCount?.toLocaleString()}</p>
                     </div>
@@ -225,7 +251,7 @@ export default function HomePage() {
               </svg>
             </div>
             <h3 className="text-lg font-semibold text-white mb-2">Secure & Private</h3>
-            <p className="text-gray-300 text-sm">Your data is safe. We don't store any videos or personal information.</p>
+            <p className="text-gray-300 text-sm">Your data is safe. We don&apos;t store any videos or personal information.</p>
           </div>
         </div>
 
