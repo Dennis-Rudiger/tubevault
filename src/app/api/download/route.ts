@@ -51,9 +51,7 @@ export async function GET(request: NextRequest) {
       outputTemplate = join(tempDir, `video_${timestamp}.%(ext)s`);
       filename = `video_${timestamp}.mp4`;
       contentType = 'video/mp4';
-    }
-
-    // Set up download options
+    }    // Set up download options
     const downloadOptions = [
       url,
       '--output', outputTemplate,
@@ -62,30 +60,35 @@ export async function GET(request: NextRequest) {
     ];
 
     if (format === 'audio') {
+      // Download audio-only format directly (no post-processing needed)
       downloadOptions.push(
-        '--extract-audio',
-        '--audio-format', 'mp3',
-        '--audio-quality', '0'
+        '--format', 'bestaudio[ext=m4a]/bestaudio/best'
       );
+      filename = `audio_${timestamp}.m4a`;
+      contentType = 'audio/mp4';
     } else {
       downloadOptions.push(
-        '--format', 'best[ext=mp4]'
+        '--format', 'best[ext=mp4]/best'
       );
-    }
-
-    // Download the file
+    }    // Download the file
+    console.log('Starting download with options:', downloadOptions);
     await ytDlpWrap.execPromise(downloadOptions);
+    console.log('Download completed successfully');
 
     // Find the downloaded file (yt-dlp might change the extension)
     const { readdirSync } = await import('fs');
     const files = readdirSync(tempDir);
+    console.log('Files in temp directory:', files);
     const downloadedFile = files.find(file => 
       file.startsWith(format === 'audio' ? `audio_${timestamp}` : `video_${timestamp}`)
     );
 
     if (!downloadedFile) {
+      console.error('No matching file found. Available files:', files);
       throw new Error('Downloaded file not found');
     }
+
+    console.log('Found downloaded file:', downloadedFile);
 
     const filePath = join(tempDir, downloadedFile);
     
