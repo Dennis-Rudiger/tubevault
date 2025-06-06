@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next"
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import StructuredData from "./components/StructuredData";
@@ -89,6 +90,7 @@ export default function RootLayout({
       >
         <StructuredData />
         {children}
+        <Analytics />
       </body>
     </html>
   );
