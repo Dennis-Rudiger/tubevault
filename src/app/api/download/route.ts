@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  let videoId = extractVideoId(videoUrlOrId);
+  const videoId = extractVideoId(videoUrlOrId);
   if (!videoId) {
     return NextResponse.json(
         { error: 'Invalid YouTube URL or Video ID provided' },
@@ -162,30 +162,31 @@ export async function GET(request: NextRequest) {
       headers: headers,
     });
 
-  } catch (error: any) {
-    console.error(`Error in GET /api/download (Video ID: ${videoId}, itag: ${itag}):`, error);
+  } catch (error) {
+    const err = error as Error; // Type assertion
+    console.error(`Error in GET /api/download (Video ID: ${videoId}, itag: ${itag}):`, err);
     
     let errorMessage = `Failed to download video. An unexpected error occurred.`;
     let errorStatus = 500;
 
-    if (error.message) {
-        if (error.message.includes('403') || error.message.includes('Status code: 403') || (error.statusCode === 403)) {
+    if (err.message) {
+        if (err.message.includes('403') || err.message.includes('Status code: 403') || (err as { statusCode?: number }).statusCode === 403) { // More specific type assertion
             errorMessage = 'YouTube is blocking the download request. This video may be region-restricted, age-restricted, or have other download protections. Please try a different video or try again later.';
             errorStatus = 403;
-        } else if (error.message.includes('private') || error.message.includes('unavailable')) {
+        } else if (err.message.includes('private') || err.message.includes('unavailable')) {
             errorMessage = 'This video is private or unavailable for download.';
             errorStatus = 404;
-        } else if (error.message.includes('No such format found') || (error.message.includes('itag') && error.message.includes('not found'))) {
+        } else if (err.message.includes('No such format found') || (err.message.includes('itag') && err.message.includes('not found'))) {
             errorMessage = `The requested format (itag ${itag}) is not available for this video, or it could not be processed by ytdl-core. It might be an invalid or unsupported format type.`;
             errorStatus = 400;
-        } else if (error.message.includes('This video is unavailable')) {
+        } else if (err.message.includes('This video is unavailable')) {
             errorMessage = 'The video is unavailable. It may have been deleted or set to private.';
             errorStatus = 404;
         }
     }
     
     return NextResponse.json(
-      { error: errorMessage },
+      { error: errorMessage, details: err.message }, // Include err.message in details
       { status: errorStatus }
     );
   }

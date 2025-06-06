@@ -141,29 +141,30 @@ export async function GET(request: NextRequest) {
     console.log('Successfully fetched video info for:', result.title);
     return NextResponse.json(result);
 
-  } catch (error: any) {
-    console.error('Error in /api/video-info:', error);
+  } catch (error) {
+    const err = error as Error; // Type assertion
+    console.error('Error in /api/video-info:', err);
     
     let errorMessage = 'Failed to fetch video information. Please check the URL and try again.';
     let statusCode = 500;
 
-    if (error.message?.includes('API key not valid') || error.message?.includes('quotaExceeded')) {
+    if (err.message?.includes('API key not valid') || err.message?.includes('quotaExceeded')) {
       errorMessage = 'YouTube API error. Please check server configuration or API quota.';
       statusCode = 503; // Service Unavailable
-    } else if (error.message?.includes('Video not found') || error.response?.status === 404) {
+    } else if (err.message?.includes('Video not found') || (err as { response?: { status?: number } }).response?.status === 404) { // More specific type assertion
       errorMessage = 'Video not found or access denied.';
       statusCode = 404;
-    } else if (error.message?.includes('Status code: 403') || error.message?.includes('private') || error.message?.includes('unavailable')) {
+    } else if (err.message?.includes('Status code: 403') || err.message?.includes('private') || err.message?.includes('unavailable')) {
         errorMessage = 'This video is private, unavailable, or region-restricted for ytdl-core processing.';
         statusCode = 403;
-    } else if (error.message?.includes('No downloadable formats')) {
+    } else if (err.message?.includes('No downloadable formats')) {
         errorMessage = 'No downloadable formats could be found for this video by ytdl-core.';
         statusCode = 404; // Or 422 Unprocessable Entity
     }
 
 
     return NextResponse.json(
-      { error: errorMessage, details: error.message },
+      { error: errorMessage, details: err.message },
       { status: statusCode }
     );
   }
