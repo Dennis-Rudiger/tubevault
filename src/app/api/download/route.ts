@@ -30,63 +30,64 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Validate that it's a valid YouTube URL
+    // Validate that it's a valid YouTube URL for ytdl-core
     if (!ytdl.validateURL(url)) {
       return NextResponse.json(
         { error: 'Invalid or unsupported YouTube URL' },
         { status: 400 }
       );
-    }
-
-    console.log(`Starting ${format} download for:`, url);
-
-    // Get video info to determine the best format
+    }    console.log(`Starting ${format} download for:`, url);
+    
+    // Get video info first to extract title for filename
     const info = await ytdl.getInfo(url);
-    const videoDetails = info.videoDetails;
-
-    let downloadOptions: ytdl.downloadOptions;
+    const videoTitle = info.videoDetails.title?.replace(/[^\w\s-]/g, '').trim() || 'video';
+    
+    let downloadOptions: ytdl.downloadOptions = {};
     let contentType: string;
     let filename: string;
 
     if (format === 'audio') {
-      // For audio, get the best audio-only format
-      downloadOptions = {
+      // Download highest quality audio-only format
+      downloadOptions = { 
         filter: 'audioonly',
-        quality: 'highestaudio',
+        quality: 'highestaudio'
       };
       contentType = 'audio/mp4';
-      filename = `${videoDetails.title?.replace(/[^a-zA-Z0-9]/g, '_') || 'audio'}.m4a`;
+      filename = `${videoTitle}.m4a`;
     } else {
-      // For video, get the best video+audio format
-      downloadOptions = {
-        filter: format => format.hasVideo && format.hasAudio,
+      // Download highest quality video format with audio
+      downloadOptions = { 
         quality: 'highest',
+        filter: (formatItem: ytdl.videoFormat) => formatItem.container === 'mp4' && formatItem.hasVideo && formatItem.hasAudio
       };
       contentType = 'video/mp4';
-      filename = `${videoDetails.title?.replace(/[^a-zA-Z0-9]/g, '_') || 'video'}.mp4`;
+      filename = `${videoTitle}.mp4`;
     }
+
+    console.log(`Download options for ${format}:`, downloadOptions);
 
     // Create the download stream
     const stream = ytdl(url, downloadOptions);
-
+    
     // Set up response headers for file download
     const headers = new Headers();
     headers.set('Content-Disposition', `attachment; filename="${filename}"`);
     headers.set('Content-Type', contentType);
+    headers.set('Cache-Control', 'no-cache');
 
-    // Convert Node.js stream to ReadableStream for the Response
+    // Convert Node.js stream to Web API ReadableStream
     const readableStream = new ReadableStream({
       start(controller) {
-        stream.on('data', (chunk: Buffer) => {
+        stream.on('data', (chunk) => {
           controller.enqueue(new Uint8Array(chunk));
         });
 
         stream.on('end', () => {
-          console.log(`${format} download completed:`, filename);
+          console.log(`${format} download completed for:`, videoTitle);
           controller.close();
         });
 
-        stream.on('error', (error: Error) => {
+        stream.on('error', (error) => {
           console.error(`${format} download error:`, error);
           controller.error(error);
         });
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error(`Error downloading ${format}:`, error);
     return NextResponse.json(
-      { error: `Failed to download ${format}` },
+      { error: `Failed to download ${format}. Please try again.` },
       { status: 500 }
     );
   }
