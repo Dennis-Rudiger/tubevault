@@ -1,127 +1,135 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ytdl from '@distube/ytdl-core';
 
+// Helper to extract video ID from various YouTube URL formats
+function extractVideoId(url: string): string | null {
+  if (!url) return null;
+  // Order matters: more specific regexes should come first.
+  const regexes = [
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/, // Standard watch URL
+    /(?:https?:\/\/)?youtu\.be\/([a-zA-Z0-9_-]{11})/, // Shortened URL
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/, // Embed URL
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/v\/([a-zA-Z0-9_-]{11})/, // V URL (older)
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/, // Shorts URL
+  ];
+  for (const regex of regexes) {
+    const match = url.match(regex);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  // If no regex matches, check if the input itself is a valid 11-character ID
+  if (url.length === 11 && /^[a-zA-Z0-9_-]+$/.test(url)) {
+    return url;
+  }
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const url = searchParams.get('url');
-  const format = searchParams.get('format'); // 'video' or 'audio'
+  const videoUrlOrId = searchParams.get('url'); // Can be URL or video ID
+  const itagString = searchParams.get('itag');
+  const filename = searchParams.get('filename');
 
-  if (!url) {
+  if (!videoUrlOrId) {
     return NextResponse.json(
-      { error: 'URL parameter is required' },
+      { error: 'URL or video ID parameter is required' },
       { status: 400 }
     );
   }
 
-  if (!format || !['video', 'audio'].includes(format)) {
+  if (!itagString) {
     return NextResponse.json(
-      { error: 'Format must be either "video" or "audio"' },
+      { error: 'itag parameter is required' },
       { status: 400 }
     );
   }
+  const itag = parseInt(itagString);
+  if (isNaN(itag)) {
+    return NextResponse.json(
+      { error: 'itag parameter must be a number' },
+      { status: 400 }
+    );
+  }
+
+  if (!filename) {
+    return NextResponse.json(
+      { error: 'filename parameter is required' },
+      { status: 400 }
+    );
+  }
+
+  let videoId = extractVideoId(videoUrlOrId);
+  if (!videoId) {
+    return NextResponse.json(
+        { error: 'Invalid YouTube URL or Video ID provided' },
+        { status: 400 }
+    );
+  }
+  
+  const fullUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
   try {
-    // Basic URL validation for YouTube
-    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)/;
-    if (!youtubeRegex.test(url)) {
+    // Validate that it's a valid YouTube URL for ytdl-core before proceeding
+    if (!ytdl.validateURL(fullUrl)) {
       return NextResponse.json(
-        { error: 'Invalid YouTube URL' },
-        { status: 400 }
-      );
-    }
-
-    // Validate that it's a valid YouTube URL for ytdl-core
-    if (!ytdl.validateURL(url)) {
-      return NextResponse.json(
-        { error: 'Invalid or unsupported YouTube URL' },
+        { error: 'Invalid or unsupported YouTube URL according to ytdl-core' },
         { status: 400 }
       );
     }
     
-    console.log(`Starting ${format} download for:`, url);
+    console.log(`Attempting download for video ID: ${videoId}, itag: ${itag}, filename: ${filename}`);
     
-    // Configure ytdl-core with better options to avoid 403 errors
+    // Configure ytdl-core with better options to potentially avoid 403 errors
     const agent = {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36', // Updated Chrome version
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
         'Accept-Encoding': 'gzip, deflate, br',
-        'DNT': '1',
+        'DNT': '1', // Do Not Track
         'Connection': 'keep-alive',
         'Upgrade-Insecure-Requests': '1',
       }
     };
     
-    // Get video info first to extract title for filename
-    const info = await ytdl.getInfo(url, { 
+    // Get video info to find the specific format by itag and its mimeType
+    const info = await ytdl.getInfo(fullUrl, { 
       requestOptions: agent,
       lang: 'en'
     });
-    const videoTitle = info.videoDetails.title?.replace(/[^\w\s-]/g, '').trim() || 'video';
-    
-    // Check if video has available formats
-    const availableFormats = info.formats.filter(format => 
-      format.hasAudio || format.hasVideo
-    );
-    
-    if (availableFormats.length === 0) {
+
+    const formatInfo = info.formats.find(f => f.itag === itag);
+
+    if (!formatInfo) {
+      console.error(`Format with itag ${itag} not found for video ${videoId}. Available itags: ${info.formats.map(f => f.itag).join(', ')}`);
       return NextResponse.json(
-        { error: 'No downloadable formats available for this video. This might be due to YouTube restrictions.' },
-        { status: 403 }
+        { error: `Format with itag ${itag} not found for this video. Please ensure the itag is correct and available.` },
+        { status: 404 }
       );
     }
+
+    const contentType = formatInfo.mimeType || 'application/octet-stream'; // Fallback contentType
     
-    let downloadOptions: ytdl.downloadOptions = {};
-    let contentType: string;
-    let filename: string;
+    const downloadOptions: ytdl.downloadOptions = { 
+      quality: itag, // ytdl-core uses the itag number directly for the quality parameter
+      requestOptions: agent,
+    };
 
-    if (format === 'audio') {
-      // Try to find audio-only formats first
-      const audioFormats = availableFormats.filter(f => f.hasAudio && !f.hasVideo);
-      if (audioFormats.length === 0) {
-        return NextResponse.json(
-          { error: 'No audio-only formats available for this video.' },
-          { status: 403 }
-        );
-      }
-      
-      downloadOptions = { 
-        filter: 'audioonly',
-        quality: 'highestaudio',
-        requestOptions: agent,
-      };
-      contentType = 'audio/mp4';
-      filename = `${videoTitle}.m4a`;
-    } else {
-      // Try to find video formats with audio
-      const videoFormats = availableFormats.filter(f => f.hasVideo && f.hasAudio);
-      if (videoFormats.length === 0) {
-        return NextResponse.json(
-          { error: 'No video formats with audio available for this video.' },
-          { status: 403 }
-        );
-      }
-      
-      downloadOptions = { 
-        quality: 'highest',
-        filter: (formatItem: ytdl.videoFormat) => formatItem.container === 'mp4' && formatItem.hasVideo && formatItem.hasAudio,
-        requestOptions: agent,
-      };
-      contentType = 'video/mp4';
-      filename = `${videoTitle}.mp4`;
-    }
-
-    console.log(`Download options for ${format}:`, downloadOptions);
+    console.log(`Found format for itag ${itag}: ${formatInfo.mimeType}. Download options:`, downloadOptions);
 
     // Create the download stream with error handling
-    const stream = ytdl(url, downloadOptions);
+    const stream = ytdl(fullUrl, downloadOptions);
     
     // Set up response headers for file download
     const headers = new Headers();
-    headers.set('Content-Disposition', `attachment; filename="${filename}"`);
+    const encodedFilename = encodeURIComponent(filename);
+    // Corrected Content-Disposition for broader compatibility
+    headers.set('Content-Disposition', `attachment; filename=\"${encodedFilename}\"; filename*=UTF-8\'\'${encodedFilename}`);
     headers.set('Content-Type', contentType);
-    headers.set('Cache-Control', 'no-cache');
+    headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    headers.set('Pragma', 'no-cache');
+    headers.set('Expires', '0');
 
     // Convert Node.js stream to Web API ReadableStream
     const readableStream = new ReadableStream({
@@ -131,16 +139,18 @@ export async function GET(request: NextRequest) {
         });
 
         stream.on('end', () => {
-          console.log(`${format} download completed for:`, videoTitle);
+          console.log(`Download stream ended for: ${filename}`);
           controller.close();
         });
 
         stream.on('error', (error) => {
-          console.error(`${format} download error:`, error);
-          controller.error(error);
+          console.error(`Download stream error for ${filename}:`, error);
+          // Ensure the error is propagated to the client response
+          controller.error(new Error(`Stream error: ${error.message}`)); 
         });
       },
       cancel() {
+        console.log(`Download stream cancelled for: ${filename}`);
         stream.destroy();
       }
     });
@@ -149,28 +159,31 @@ export async function GET(request: NextRequest) {
       headers: headers,
     });
 
-  } catch (error) {
-    console.error(`Error downloading ${format}:`, error);
+  } catch (error: any) {
+    console.error(`Error in GET /api/download (Video ID: ${videoId}, itag: ${itag}):`, error);
     
-    // Provide more specific error messages based on the error type
-    if (error instanceof Error) {
-      if (error.message.includes('403') || error.message.includes('Status code: 403')) {
-        return NextResponse.json(
-          { error: 'YouTube is currently blocking download requests. This video may be region-restricted or have download protection. Please try a different video or try again later.' },
-          { status: 403 }
-        );
-      }
-      if (error.message.includes('private') || error.message.includes('unavailable')) {
-        return NextResponse.json(
-          { error: 'This video is private or unavailable for download.' },
-          { status: 404 }
-        );
-      }
+    let errorMessage = `Failed to download video. An unexpected error occurred.`;
+    let errorStatus = 500;
+
+    if (error.message) {
+        if (error.message.includes('403') || error.message.includes('Status code: 403') || (error.statusCode === 403)) {
+            errorMessage = 'YouTube is blocking the download request. This video may be region-restricted, age-restricted, or have other download protections. Please try a different video or try again later.';
+            errorStatus = 403;
+        } else if (error.message.includes('private') || error.message.includes('unavailable')) {
+            errorMessage = 'This video is private or unavailable for download.';
+            errorStatus = 404;
+        } else if (error.message.includes('No such format found') || (error.message.includes('itag') && error.message.includes('not found'))) {
+            errorMessage = `The requested format (itag ${itag}) is not available for this video, or it could not be processed by ytdl-core. It might be an invalid or unsupported format type.`;
+            errorStatus = 400;
+        } else if (error.message.includes('This video is unavailable')) {
+            errorMessage = 'The video is unavailable. It may have been deleted or set to private.';
+            errorStatus = 404;
+        }
     }
     
     return NextResponse.json(
-      { error: `Failed to download ${format}. The video may be restricted or temporarily unavailable. Please try again later.` },
-      { status: 500 }
+      { error: errorMessage },
+      { status: errorStatus }
     );
   }
 }
