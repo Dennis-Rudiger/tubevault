@@ -36,29 +36,77 @@ export async function GET(request: NextRequest) {
         { error: 'Invalid or unsupported YouTube URL' },
         { status: 400 }
       );
-    }    console.log(`Starting ${format} download for:`, url);
+    }
+    
+    console.log(`Starting ${format} download for:`, url);
+    
+    // Configure ytdl-core with better options to avoid 403 errors
+    const agent = {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+      }
+    };
     
     // Get video info first to extract title for filename
-    const info = await ytdl.getInfo(url);
+    const info = await ytdl.getInfo(url, { 
+      requestOptions: agent,
+      lang: 'en'
+    });
     const videoTitle = info.videoDetails.title?.replace(/[^\w\s-]/g, '').trim() || 'video';
+    
+    // Check if video has available formats
+    const availableFormats = info.formats.filter(format => 
+      format.hasAudio || format.hasVideo
+    );
+    
+    if (availableFormats.length === 0) {
+      return NextResponse.json(
+        { error: 'No downloadable formats available for this video. This might be due to YouTube restrictions.' },
+        { status: 403 }
+      );
+    }
     
     let downloadOptions: ytdl.downloadOptions = {};
     let contentType: string;
     let filename: string;
 
     if (format === 'audio') {
-      // Download highest quality audio-only format
+      // Try to find audio-only formats first
+      const audioFormats = availableFormats.filter(f => f.hasAudio && !f.hasVideo);
+      if (audioFormats.length === 0) {
+        return NextResponse.json(
+          { error: 'No audio-only formats available for this video.' },
+          { status: 403 }
+        );
+      }
+      
       downloadOptions = { 
         filter: 'audioonly',
-        quality: 'highestaudio'
+        quality: 'highestaudio',
+        requestOptions: agent,
       };
       contentType = 'audio/mp4';
       filename = `${videoTitle}.m4a`;
     } else {
-      // Download highest quality video format with audio
+      // Try to find video formats with audio
+      const videoFormats = availableFormats.filter(f => f.hasVideo && f.hasAudio);
+      if (videoFormats.length === 0) {
+        return NextResponse.json(
+          { error: 'No video formats with audio available for this video.' },
+          { status: 403 }
+        );
+      }
+      
       downloadOptions = { 
         quality: 'highest',
-        filter: (formatItem: ytdl.videoFormat) => formatItem.container === 'mp4' && formatItem.hasVideo && formatItem.hasAudio
+        filter: (formatItem: ytdl.videoFormat) => formatItem.container === 'mp4' && formatItem.hasVideo && formatItem.hasAudio,
+        requestOptions: agent,
       };
       contentType = 'video/mp4';
       filename = `${videoTitle}.mp4`;
@@ -66,7 +114,7 @@ export async function GET(request: NextRequest) {
 
     console.log(`Download options for ${format}:`, downloadOptions);
 
-    // Create the download stream
+    // Create the download stream with error handling
     const stream = ytdl(url, downloadOptions);
     
     // Set up response headers for file download
@@ -103,8 +151,25 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error(`Error downloading ${format}:`, error);
+    
+    // Provide more specific error messages based on the error type
+    if (error instanceof Error) {
+      if (error.message.includes('403') || error.message.includes('Status code: 403')) {
+        return NextResponse.json(
+          { error: 'YouTube is currently blocking download requests. This video may be region-restricted or have download protection. Please try a different video or try again later.' },
+          { status: 403 }
+        );
+      }
+      if (error.message.includes('private') || error.message.includes('unavailable')) {
+        return NextResponse.json(
+          { error: 'This video is private or unavailable for download.' },
+          { status: 404 }
+        );
+      }
+    }
+    
     return NextResponse.json(
-      { error: `Failed to download ${format}. Please try again.` },
+      { error: `Failed to download ${format}. The video may be restricted or temporarily unavailable. Please try again later.` },
       { status: 500 }
     );
   }
