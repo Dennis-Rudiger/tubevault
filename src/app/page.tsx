@@ -3,25 +3,40 @@
 import { useState } from "react";
 import Image from "next/image";
 
-interface VideoFormat {
-  format_id?: string;
-  ext?: string;
-  filesize?: number;
-  height?: number;
-  width?: number;
+// Matches the structure from /api/video-info
+interface YtdlVideoFormat {
+  itag: number;
+  qualityLabel?: string;
+  container?: string;
+  contentLength?: string; 
+  hasVideo?: boolean;
+  hasAudio?: boolean;
+  url?: string; 
+  audioBitrate?: number;
+  bitrate?: number; // Added for video bitrate, used in sorting
+  mimeType?: string; // Added for audio format detection
+  codecs?: string; // Added for video format detection
+  width?: number; // Added for video format detection
+  height?: number; // Added for video format detection
+  fps?: number; // Added for video format detection
 }
 
 interface VideoDetails {
+  videoId: string; // Ensured this is present
   title: string;
   description: string;
   thumbnail: string;
   uploader: string;
-  duration: number;
+  duration: number; 
   viewCount: number;
+  likeCount?: number;
   uploadDate: string;
-  formats: {
-    video: VideoFormat[];
-    audioOnly: VideoFormat[];
+  channelId?: string;
+  tags?: string[];
+  liveBroadcastContent?: string;
+  ytdlFormats: { // Ensured this matches backend
+    video: YtdlVideoFormat[];
+    audioOnly: YtdlVideoFormat[];
   };
 }
 
@@ -30,6 +45,8 @@ export default function HomePage() {
   const [videoDetails, setVideoDetails] = useState<VideoDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedVideoItag, setSelectedVideoItag] = useState<number | null>(null);
+  const [selectedAudioItag, setSelectedAudioItag] = useState<number | null>(null);
 
   const handleFetchVideo = async () => {
     if (!youtubeUrl) {
@@ -38,7 +55,9 @@ export default function HomePage() {
     }
     setError(null);
     setIsLoading(true);
-    setVideoDetails(null); 
+    setVideoDetails(null);
+    setSelectedVideoItag(null); // Reset selected itags
+    setSelectedAudioItag(null); // Reset selected itags
 
     try {
       const response = await fetch(`/api/video-info?url=${encodeURIComponent(youtubeUrl)}`);
@@ -46,21 +65,83 @@ export default function HomePage() {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to fetch video information.");
       }
-      const data = await response.json();
+      const data: VideoDetails = await response.json(); // Ensure data is typed correctly
       setVideoDetails(data);
+      setError(null); 
+
+      // Auto-select best available formats
+      if (data.ytdlFormats?.video?.length > 0) {
+        let bestVideoFormat = data.ytdlFormats.video
+          .filter((f: YtdlVideoFormat) => f.container === 'mp4' && f.qualityLabel && f.codecs && f.codecs.startsWith('avc1'))
+          .sort((a: YtdlVideoFormat, b: YtdlVideoFormat) => (b.height || 0) - (a.height || 0) || (b.fps || 0) - (a.fps || 0) || (b.bitrate || 0) - (a.bitrate || 0))[0];
+        
+        if (!bestVideoFormat) { // Fallback to any mp4
+          bestVideoFormat = data.ytdlFormats.video.filter((f: YtdlVideoFormat) => f.container === 'mp4')[0];
+        }
+        if (!bestVideoFormat && data.ytdlFormats.video.length > 0) { // Fallback to first available video with quality label
+           bestVideoFormat = data.ytdlFormats.video.find((f: YtdlVideoFormat) => f.qualityLabel) || data.ytdlFormats.video[0];
+        }
+        setSelectedVideoItag(bestVideoFormat?.itag || null);
+      }
+      if (data.ytdlFormats?.audioOnly?.length > 0) {
+        let bestAudioFormat = data.ytdlFormats.audioOnly
+          .filter((f: YtdlVideoFormat) => (f.container === 'mp4' || f.mimeType?.includes('audio/mp4')) && f.audioBitrate)
+          .sort((a: YtdlVideoFormat, b: YtdlVideoFormat) => (b.audioBitrate || 0) - (a.audioBitrate || 0))[0];
+        
+        if (!bestAudioFormat && data.ytdlFormats.audioOnly.length > 0) { // Fallback to first available audio
+          bestAudioFormat = data.ytdlFormats.audioOnly.sort((a: YtdlVideoFormat, b: YtdlVideoFormat) => (b.audioBitrate || 0) - (a.audioBitrate || 0))[0];
+        }
+        setSelectedAudioItag(bestAudioFormat?.itag || null);
+      }
+
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "An unexpected error occurred.";
       setError(errorMessage);
+      console.error("Fetch video error:", err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleDownload = (format: "video" | "audio") => {
-    if (!videoDetails || !youtubeUrl) return;
+  const handleDownload = (type: "video" | "audio") => {
+    if (!videoDetails || !videoDetails.videoId) {
+      setError("Video details or Video ID are not available. Please fetch video info first.");
+      return;
+    }
+    if (!videoDetails.ytdlFormats) {
+      setError("Video format details (ytdlFormats) are missing. Please fetch video info again.");
+      return;
+    }
+
+    let itag: number | null = null;
+    let filenameSuffix = type === 'video' ? '.mp4' : '.m4a'; // Default suffix, m4a for audio
+
+    if (type === "video") {
+      itag = selectedVideoItag;
+      const selectedFormat = videoDetails.ytdlFormats.video.find((f: YtdlVideoFormat) => f.itag === itag);
+      if (selectedFormat?.container) {
+        filenameSuffix = `.${selectedFormat.container}`;
+      }
+    } else { // audio
+      itag = selectedAudioItag;
+      const selectedFormat = videoDetails.ytdlFormats.audioOnly.find((f: YtdlVideoFormat) => f.itag === itag);
+       if (selectedFormat?.container) {
+        // Prefer m4a for audio if container is mp4, otherwise use the container
+        filenameSuffix = selectedFormat.container === 'mp4' ? '.m4a' : `.${selectedFormat.container}`;
+      }
+    }
+
+    if (!itag) {
+      setError(`No suitable ${type} format selected or available for download. Please fetch video info again.`);
+      console.warn(`Attempted to download ${type} but no itag was selected. Video itag: ${selectedVideoItag}, Audio itag: ${selectedAudioItag}`);
+      return;
+    }
     
-    
-    const downloadUrl = `/api/download?url=${encodeURIComponent(youtubeUrl)}&format=${format}`;
+    const safeTitle = (videoDetails.title || 'download').replace(/[^a-zA-Z0-9\s\-_\.]/g, '').trim() || 'download';
+    const filename = `${safeTitle}${filenameSuffix}`;
+
+    const downloadUrl = `/api/download?videoId=${videoDetails.videoId}&itag=${itag}&filename=${encodeURIComponent(filename)}`;
+    console.log("Requesting download URL:", downloadUrl);
     window.open(downloadUrl, '_blank');
   };
 

@@ -27,7 +27,10 @@ function extractVideoId(url: string): string | null {
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const videoUrlOrId = searchParams.get('url'); // Can be URL or video ID
+  let videoUrlOrId = searchParams.get('url'); // Can be URL or video ID
+  if (!videoUrlOrId) {
+    videoUrlOrId = searchParams.get('videoId'); // Fallback to videoId if url is not present
+  }
   const itagString = searchParams.get('itag');
   const filename = searchParams.get('filename');
 
